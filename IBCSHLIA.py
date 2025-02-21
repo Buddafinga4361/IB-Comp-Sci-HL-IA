@@ -1,15 +1,18 @@
-from flask import Flask, render_template, request, redirect, url_for, session # type: ignore
+Copy
+from flask import Flask, render_template, request, redirect, url_for, session, flash # type: ignore
 from flask_sqlalchemy import SQLAlchemy # type: ignore
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user # type: ignore
 from werkzeug.security import generate_password_hash, check_password_hash # type: ignore
 import pandas as pd # type: ignore
+import os
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///membership.db'
-app.config['SECRET_KEY'] = 'supersecretkey'
+app.config['SECRET_KEY'] = os.urandom(24)  # Use a random secret key for better security
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
+login_manager.login_view = 'login'  # Redirect to login if not authenticated
 
 # User Model
 class User(UserMixin, db.Model):
@@ -49,9 +52,16 @@ def register():
         email = request.form['email']
         password = generate_password_hash(request.form['password'], method='sha256')
         membership_type = request.form['membership_type']
+
+        # Membership type validation (example)
+        if membership_type not in ['basic', 'premium']:
+            flash('Invalid membership type', 'danger')
+            return redirect(url_for('register'))
+
         new_user = User(username=username, email=email, password=password, membership_type=membership_type)
         db.session.add(new_user)
         db.session.commit()
+        flash('Registration successful! Please log in.', 'success')
         return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -63,7 +73,10 @@ def login():
         user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
+            flash('Login successful!', 'success')
             return redirect(url_for('dashboard'))
+        else:
+            flash('Login failed. Check your email and/or password.', 'danger')
     return render_template('login.html')
 
 @app.route('/dashboard')
@@ -75,14 +88,12 @@ def dashboard():
 @login_required
 def logout():
     logout_user()
+    flash('You have been logged out.', 'info')
     return redirect(url_for('home'))
-
 
 # Run the Flask App
 if __name__ == '__main__':
-    db.create_all()
+    if not os.path.exists('membership.db'):
+        db.create_all()  # Create database only if it doesn't exist
     app.run(debug=True)
-
-
-
 
